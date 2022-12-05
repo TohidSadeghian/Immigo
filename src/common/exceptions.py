@@ -3,7 +3,7 @@ import re
 import logging
 from rest_framework.views import exception_handler
 from .messages import Messages
-
+from .documents import ErrorDocument
 
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,10 @@ def base_exception_handler(exc, context):
     try:
         error_class = eval(exc.__class__.__name__)(exc, context)
 
-        
+        # saving error logs to mongoengine
+        error = str(exc, context)
+        ErrorDocument(error_detail=error).save()
+
     except NameError:
         error_class = Error(exc, context)
     return error_class.result()
