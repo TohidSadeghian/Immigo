@@ -1,0 +1,7 @@
+beautifulsoup4
+celery
+Django
+djangorestframework
+requests
+mongoengine
+pillow

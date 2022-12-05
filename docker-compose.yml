@@ -1,0 +1,62 @@
+version: '3'
+
+services:
+
+  server:
+    restart: always
+    build:
+      dockerfile: Dockerfile
+      context: .
+    ports:
+      - 8000:8000
+    volumes:
+      - ./src:/app/src
+    
+    command: >
+      sh -c "python3 /app/src/manage.py makemigrations  &&
+              /app/src/manage.py migrate &&
+              /app/src/manage.py test &&
+              /app/src/manage.py runserver 0:8000"
+
+    depends_on:
+      - immigo_rabbit
+      - immigo_mongo
+      - immigo_celery
+
+
+  immigo_mongo:
+    container_name: immigo_mongo
+    image: mongo
+    restart: always
+
+  immigo_celery:
+    container_name: immigo_celery
+    build: .
+    working_dir: /app/src
+    command: ["celery", "-A", "immigo.celery", "worker", "-l", "info", "-c", "5"]
+    restart: always
+    volumes:
+      - .:/app
+    depends_on:
+      - immigo_rabbit
+
+  immigo_beat:
+    container_name: immigo_beat
+    build: .
+    working_dir: /app/src
+    command: ["celery", "-A", "immigo", "beat", "-l", "info", "--pidfile=/tmp/celeryd.pid"]
+    restart: always
+    volumes:
+      - .:/app
+    depends_on:
+      - immigo_rabbit
+
+  immigo_rabbit:
+    hostname: rabbit
+    image: rabbitmq:3.6.9
+    environment:
+        - RABBITMQ_DEFAULT_USER=admin
+        - RABBITMQ_DEFAULT_PASS=mypass
+    ports:
+        - "5672:5672"
+        - "15672:15672"

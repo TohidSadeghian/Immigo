@@ -1,0 +1,43 @@
+image: gitlab.keylid.com:5005/tika/infra/base_image/docker:git
+
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_AUTH_CONFIG: $CI_DOCKER_AUTH_CONFIG
+  CONTAINER_RELEASE_IMAGE: gitlab.keylid.com:5005/tika/immigo/django:latest
+
+build-image:
+  stage: build
+  only:
+    - master@tika/immigo/django
+  services:
+    - gitlab.keylid.com:5005/tika/infra/base_image/docker:dind
+
+  variables:
+    DOCKER_HOST: gitlab.keylid.com-tika-infra-base_image-docker
+
+  script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN gitlab.keylid.com:5005
+    - docker pull $CONTAINER_RELEASE_IMAGE || true
+    - docker build --cache-from $CONTAINER_RELEASE_IMAGE -t $CONTAINER_RELEASE_IMAGE .
+    - docker push $CONTAINER_RELEASE_IMAGE
+
+deploy-image:
+  stage: deploy
+  only:
+    - master@tika/immigo/django
+  script:
+    - 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo -e "Host target\n\tStrictHostKeyChecking no\n\tHostName 172.16.20.53\n\tUser keylid\n\tPort 22\n" > ~/.ssh/config
+    - chmod 600 ~/.ssh/config
+    - scp docker-compose-pro.yml immigo_nginx.conf mng.sh .docpasswd doc.json target:/var/www/immigo/
+    - ssh target "cd /var/www/immigo/ &&
+                  docker --config . login -u gitlab-ci-token -p $CI_JOB_TOKEN gitlab.keylid.com:5005 &&
+                  export DOCKER_CONFIG=/var/www/immigo &&
+                  ./mng.sh upback"
